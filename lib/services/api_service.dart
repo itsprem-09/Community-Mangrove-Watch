@@ -1,0 +1,103 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:http/http.dart' as http;
+
+import '../models/incident_report.dart';
+import '../models/user.dart';
+
+class ApiService {
+  static const String baseUrl = 'http://localhost:5000/api';
+  static const String pythonBackendUrl = 'http://localhost:8000';
+
+  Future<String> analyzeImageWithGemini(String imagePath) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$pythonBackendUrl/analyze-image'),
+    );
+
+    request.files.add(await http.MultipartFile.fromPath('image', imagePath));
+
+    final response = await request.send();
+    if (response.statusCode == 200) {
+      final responseData = await response.stream.bytesToString();
+      final data = jsonDecode(responseData);
+      return data['prediction'];
+    }
+    throw Exception('Failed to analyze image');
+  }
+
+  Future<void> submitReport(IncidentReport report) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/reports'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(report.toJson()),
+    );
+
+    if (response.statusCode != 201) {
+      throw Exception('Failed to submit report');
+    }
+  }
+
+  Future<List<IncidentReport>> getReports() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/reports'),
+      headers: {'Content-Type': 'application/json'},
+    );
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((json) => IncidentReport.fromJson(json)).toList();
+    }
+    throw Exception('Failed to load reports');
+  }
+
+  Future<Map<String, dynamic>> getPredictionFromGEE(double lat, double lng) async {
+    final response = await http.post(
+      Uri.parse('$pythonBackendUrl/predict-mangrove'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'latitude': lat, 'longitude': lng}),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    throw Exception('Failed to get mangrove prediction');
+  }
+
+  Future<List<Map<String, dynamic>>> getLeaderboard() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/leaderboard'),
+      headers: {'Content-Type': 'application/json'},
+    );
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.cast<Map<String, dynamic>>();
+    }
+    throw Exception('Failed to load leaderboard');
+  }
+
+  Future<Map<String, dynamic>?> getUserStats() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/user/profile'),
+      headers: {'Content-Type': 'application/json'},
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>> getDashboardAnalytics() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/analytics/dashboard'),
+      headers: {'Content-Type': 'application/json'},
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    throw Exception('Failed to load analytics');
+  }
+}
