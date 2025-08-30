@@ -1,6 +1,7 @@
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'dart:io' show Platform;
 import '../models/location_result.dart';
 
 class LocationService {
@@ -21,8 +22,30 @@ class LocationService {
 
   // Request location permission with better handling
   Future<bool> requestLocationPermission() async {
-    final permission = await Permission.location.request();
-    return permission.isGranted || permission.isLimited;
+    try {
+      // First check if location services are enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        print('[LocationService] Location services are disabled');
+        return false;
+      }
+
+      // Check current permission status
+      LocationPermission permission = await Geolocator.checkPermission();
+      print('[LocationService] Current permission status: $permission');
+
+      if (permission == LocationPermission.denied) {
+        // Request permission
+        permission = await Geolocator.requestPermission();
+        print('[LocationService] Permission after request: $permission');
+      }
+
+      return permission == LocationPermission.always || 
+             permission == LocationPermission.whileInUse;
+    } catch (e) {
+      print('[LocationService] Error requesting permission: $e');
+      return false;
+    }
   }
 
   // Check location permission status
@@ -33,8 +56,12 @@ class LocationService {
   // Main method to get current position with proper error handling
   Future<LocationResult> getCurrentPositionWithStatus() async {
     try {
+      print('[LocationService] Starting location request...');
+      
       // Step 1: Check if location services are enabled
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      print('[LocationService] Location services enabled: $serviceEnabled');
+      
       if (!serviceEnabled) {
         return LocationResult(
           position: null,
@@ -45,10 +72,14 @@ class LocationService {
 
       // Step 2: Check location permissions
       LocationPermission permission = await Geolocator.checkPermission();
+      print('[LocationService] Initial permission status: $permission');
       
       if (permission == LocationPermission.denied) {
         // Request permission
+        print('[LocationService] Requesting location permission...');
         permission = await Geolocator.requestPermission();
+        print('[LocationService] Permission after request: $permission');
+        
         if (permission == LocationPermission.denied) {
           return LocationResult(
             position: null,
@@ -59,6 +90,7 @@ class LocationService {
       }
 
       if (permission == LocationPermission.deniedForever) {
+        print('[LocationService] Permission permanently denied');
         return LocationResult(
           position: null,
           error: LocationError.permissionDeniedForever,
@@ -66,11 +98,25 @@ class LocationService {
         );
       }
 
-      // Step 3: Get current position
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 15),
-      );
+      // Step 3: Get current position with timeout handling
+      print('[LocationService] Getting current position...');
+      
+      Position? position;
+      try {
+        // Try to get position with timeout
+        position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 10),
+        );
+      } catch (e) {
+        print('[LocationService] High accuracy failed, trying with best accuracy: $e');
+        // If high accuracy fails, try with best accuracy
+        position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.best,
+        );
+      }
+      
+      print('[LocationService] Position obtained: Lat ${position.latitude}, Lng ${position.longitude}');
 
       return LocationResult(
         position: position,
@@ -78,20 +124,42 @@ class LocationService {
         message: 'Location retrieved successfully',
       );
 
-    } catch (e) {
-      print('Error getting location: $e');
+    } catch (e, stackTrace) {
+      print('[LocationService] Error getting location: $e');
+      print('[LocationService] Stack trace: $stackTrace');
+      
+      // Provide more specific error messages
+      String errorMessage = 'Failed to get location';
+      if (e.toString().contains('timeout')) {
+        errorMessage = 'Location request timed out. Please try again.';
+      } else if (e.toString().contains('service')) {
+        errorMessage = 'Location service error. Please check your device settings.';
+      } else if (e.toString().contains('permission')) {
+        errorMessage = 'Location permission error. Please check app permissions.';
+      }
+      
       return LocationResult(
         position: null,
         error: LocationError.unknown,
-        message: 'Failed to get location: ${e.toString()}',
+        message: '$errorMessage: ${e.toString()}',
       );
     }
   }
 
   // Backward compatible method
   Future<Position?> getCurrentPosition() async {
-    final result = await getCurrentPositionWithStatus();
-    return result.position;
+    try {
+      final result = await getCurrentPositionWithStatus();
+      if (result.isSuccess) {
+        return result.position;
+      } else {
+        print('[LocationService] Failed to get position: ${result.message}');
+        return null;
+      }
+    } catch (e) {
+      print('[LocationService] Error in getCurrentPosition: $e');
+      return null;
+    }
   }
 
   Future<String?> getAddressFromCoordinates(double latitude, double longitude) async {

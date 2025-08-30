@@ -124,32 +124,80 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except Exception as e:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+# Optional authentication for internal API calls
+async def get_current_user_optional(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)):
+    """Get current authenticated user or None for internal API calls"""
+    if not credentials:
+        return None
+    try:
+        user = await auth_service.get_current_user(credentials.credentials)
+        return user
+    except:
+        return None
+
 # Incident reporting endpoints
-@app.post("/incidents", response_model=IncidentResponse)
+@app.post("/incidents")
 async def create_incident(
-    incident_data: IncidentCreate,
-    current_user: User = Depends(get_current_user)
+    incident_data: Dict[str, Any],
+    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Create a new incident report"""
     try:
-        incident = await db.create_incident(incident_data, current_user.id)
-        return IncidentResponse.from_incident(incident)
+        # Use user ID if authenticated, otherwise use anonymous
+        user_id = current_user.id if current_user else "anonymous"
+        
+        # Process incident data
+        incident = {
+            "id": str(datetime.now().timestamp()),
+            "userId": incident_data.get("userId", user_id),
+            "type": incident_data.get("type", "other"),
+            "description": incident_data.get("description", ""),
+            "location": incident_data.get("location", {}),
+            "severity": incident_data.get("severity", "medium"),
+            "status": incident_data.get("status", "pending"),
+            "timestamp": incident_data.get("timestamp", datetime.now().isoformat()),
+            "images": incident_data.get("images", []),
+            "title": incident_data.get("title", "Untitled"),
+            "reporterName": incident_data.get("reporterName", "Anonymous")
+        }
+        
+        # ML analysis if available
+        if ml_service.model_loaded:
+            prediction = await ml_service.predict_incident_severity(incident_data)
+            incident["mlPrediction"] = prediction.get("severity", "pending")
+            incident["confidence"] = prediction.get("confidence", 0)
+        
+        # Store in database if connected
+        if db.is_connected():
+            await db.incidents_collection.insert_one(incident)
+        
+        return incident
     except Exception as e:
+        logger.error(f"Error creating incident: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/incidents", response_model=List[IncidentResponse])
+@app.get("/incidents")
 async def get_incidents(
     skip: int = 0,
     limit: int = 50,
     status_filter: Optional[str] = None,
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Get list of incidents with pagination and filtering"""
     try:
-        incidents = await db.get_incidents(skip, limit, status_filter)
-        return [IncidentResponse.from_incident(inc) for inc in incidents]
+        # Return empty list if database not connected
+        if not db.is_connected():
+            return []
+            
+        query = {}
+        if status_filter:
+            query["status"] = status_filter
+            
+        incidents = await db.incidents_collection.find(query).skip(skip).limit(limit).to_list(length=limit)
+        return incidents
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error fetching incidents: {e}")
+        return []  # Return empty list on error
 
 @app.get("/incidents/{incident_id}", response_model=IncidentResponse)
 async def get_incident(
@@ -192,10 +240,10 @@ async def analyze_image_with_gemini(
         raise HTTPException(status_code=500, detail=f"Failed to analyze image: {str(e)}")
 
 # Mangrove prediction using GEE and ML model
-@app.post("/predict-mangrove", response_model=PredictionResponse)
+@app.post("/predict-mangrove")
 async def predict_mangrove(
-    request: PredictionRequest,
-    current_user: User = Depends(get_current_user)
+    request: Dict[str, Any],
+    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Predict mangrove coverage at given coordinates using satellite data"""
     try:

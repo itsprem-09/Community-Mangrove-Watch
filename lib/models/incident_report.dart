@@ -95,20 +95,43 @@ class IncidentReport extends Equatable {
   }
 
   factory IncidentReport.fromJson(Map<String, dynamic> json) {
+    // Handle both direct coordinates and nested location object
+    double latitude = 0.0;
+    double longitude = 0.0;
+    
+    if (json['location'] != null && json['location'] is Map) {
+      latitude = (json['location']['latitude'] ?? 0.0).toDouble();
+      longitude = (json['location']['longitude'] ?? 0.0).toDouble();
+    } else {
+      latitude = (json['latitude'] ?? 0.0).toDouble();
+      longitude = (json['longitude'] ?? 0.0).toDouble();
+    }
+    
     return IncidentReport(
-      id: json['id'],
-      userId: json['userId'],
-      title: json['title'] ?? '',
-      type: IncidentType.values.byName(json['type']),
-      description: json['description'],
+      id: json['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      userId: json['userId'] ?? 'unknown',
+      title: json['title'] ?? json['description']?.toString().substring(0, json['description'].toString().length > 30 ? 30 : json['description'].toString().length) ?? 'Untitled',
+      type: IncidentType.values.firstWhere(
+        (e) => e.name == json['type'],
+        orElse: () => IncidentType.other,
+      ),
+      description: json['description'] ?? '',
       imagePath: json['imagePath'],
       images: List<String>.from(json['images'] ?? []),
-      severity: SeverityLevel.values.byName(json['severity'] ?? 'medium'),
-      latitude: json['latitude'].toDouble(),
-      longitude: json['longitude'].toDouble(),
-      timestamp: DateTime.parse(json['timestamp']),
-      aiPrediction: json['aiPrediction'],
-      status: ReportStatus.values.byName(json['status']),
+      severity: SeverityLevel.values.firstWhere(
+        (e) => e.name == (json['severity'] ?? 'medium'),
+        orElse: () => SeverityLevel.medium,
+      ),
+      latitude: latitude,
+      longitude: longitude,
+      timestamp: json['timestamp'] != null 
+        ? DateTime.parse(json['timestamp']) 
+        : DateTime.now(),
+      aiPrediction: json['aiPrediction'] ?? json['mlPrediction'],
+      status: ReportStatus.values.firstWhere(
+        (e) => e.name == (json['status'] ?? 'pending'),
+        orElse: () => ReportStatus.pending,
+      ),
       points: json['points'] ?? 0,
       verificationCount: json['verificationCount'] ?? 0,
     );
