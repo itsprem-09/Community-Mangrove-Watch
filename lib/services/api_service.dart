@@ -4,15 +4,15 @@ import 'package:http/http.dart' as http;
 
 import '../models/incident_report.dart';
 import '../models/user.dart';
+import 'api_config.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://localhost:5000/api';
-  static const String pythonBackendUrl = 'http://localhost:8000';
+  static String get baseUrl => ApiConfig.backendBaseUrl;
 
   Future<String> analyzeImageWithGemini(String imagePath) async {
     final request = http.MultipartRequest(
       'POST',
-      Uri.parse('$pythonBackendUrl/analyze-image'),
+      Uri.parse('$baseUrl/analyze-image'),
     );
 
     request.files.add(await http.MultipartFile.fromPath('image', imagePath));
@@ -28,7 +28,7 @@ class ApiService {
 
   Future<void> submitReport(IncidentReport report) async {
     final response = await http.post(
-      Uri.parse('$baseUrl/reports'),
+      Uri.parse('$baseUrl/incidents'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(report.toJson()),
     );
@@ -40,7 +40,7 @@ class ApiService {
 
   Future<List<IncidentReport>> getReports() async {
     final response = await http.get(
-      Uri.parse('$baseUrl/reports'),
+      Uri.parse('$baseUrl/incidents'),
       headers: {'Content-Type': 'application/json'},
     );
 
@@ -53,7 +53,7 @@ class ApiService {
 
   Future<Map<String, dynamic>> getPredictionFromGEE(double lat, double lng) async {
     final response = await http.post(
-      Uri.parse('$pythonBackendUrl/predict-mangrove'),
+      Uri.parse('$baseUrl/predict-mangrove'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'latitude': lat, 'longitude': lng}),
     );

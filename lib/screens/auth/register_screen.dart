@@ -6,6 +6,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../blocs/auth/auth_bloc.dart';
 import '../../core/theme.dart';
 import '../../models/user.dart';
+import '../../services/api_config.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -27,6 +28,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
   UserRole _selectedRole = UserRole.citizen;
+  
+  @override
+  void initState() {
+    super.initState();
+    // Print API configuration on startup for debugging
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ApiConfig.printConfig();
+    });
+  }
 
   @override
   void dispose() {

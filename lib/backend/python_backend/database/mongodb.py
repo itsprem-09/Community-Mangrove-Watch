@@ -71,7 +71,7 @@ class Database:
         }
         
         result = await self.users.insert_one(user_doc)
-        return await self.get_user_by_id(result.inserted_id)
+        return await self.get_user_by_id(user_id)
     
     async def get_user_by_email(self, email: str) -> Optional[User]:
         """Get user by email"""

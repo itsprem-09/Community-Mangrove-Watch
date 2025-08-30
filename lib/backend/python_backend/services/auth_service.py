@@ -11,10 +11,17 @@ from database.mongodb import Database
 class AuthService:
     def __init__(self, db_instance=None):
         self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-        self.secret_key = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
-        self.algorithm = "HS256"
-        self.access_token_expire_minutes = 24 * 60  # 24 hours
+        # Use JWT configuration from environment variables
+        self.secret_key = os.getenv("JWT_SECRET_KEY", os.getenv("JWT_SECRET", "your-secret-key-change-in-production"))
+        self.algorithm = os.getenv("JWT_ALGORITHM", "HS256")
+        # Use ACCESS_TOKEN_EXPIRE_MINUTES from env (default 1440 = 24 hours)
+        self.access_token_expire_minutes = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
         self.db = db_instance if db_instance else Database()
+        
+        # Log configuration for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"JWT configured with algorithm: {self.algorithm}, expiry: {self.access_token_expire_minutes} minutes")
     
     def hash_password(self, password: str) -> str:
         """Hash a password"""
