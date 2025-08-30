@@ -47,6 +47,20 @@ class AuthService {
       print('[AuthService] Attempting login for: $email');
       print('[AuthService] Using backend URL: $baseUrl');
       
+      // First check if server is reachable
+      try {
+        final healthCheck = await http.get(
+          Uri.parse('$baseUrl/health'),
+        ).timeout(const Duration(seconds: 5));
+        print('[AuthService] Server health check status: ${healthCheck.statusCode}');
+      } catch (e) {
+        print('[AuthService] Server health check failed: $e');
+        return {
+          'success': false,
+          'message': 'Cannot connect to server at $baseUrl. Please ensure the server is running and check your network connection.'
+        };
+      }
+      
       final response = await _makeRequestWithRetry(
         () => http.post(
           Uri.parse('$baseUrl/auth/login'),

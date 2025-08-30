@@ -8,7 +8,15 @@ class ApiConfig {
   static const String _iosSimulatorUrl = 'http://localhost:5000';
   
   // YOUR MACHINE'S IP ADDRESS - Update this for physical device testing!
-  static const String _physicalDeviceUrl = 'http://10.167.224.113:5000'; // Your Windows machine IP
+  // Note: This IP may change when your network changes. Update as needed.
+  static const String _physicalDeviceUrl = 'http://10.167.224.193:5000'; // Your Windows machine IP
+  
+  // Alternative IPs (in case primary IP doesn't work)
+  static const List<String> _alternativeUrls = [
+    'http://10.167.224.193:5000',
+    'http://10.40.19.96:5000',  // Secondary network interface
+    'http://192.168.1.100:5000', // Common home network range
+  ];
   
   // Production server (update when deploying)
   static const String _productionUrl = 'http://localhost:5000'; // Change this to your production URL

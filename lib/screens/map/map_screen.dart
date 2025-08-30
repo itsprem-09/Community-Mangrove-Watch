@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../services/location_service.dart';
+import '../../models/location_result.dart';
 import '../../core/theme.dart';
 
 class MapScreen extends StatefulWidget {
@@ -29,35 +30,170 @@ class _MapScreenState extends State<MapScreen> {
 
   Future<void> _initializeMap() async {
     try {
-      final position = await _locationService.getCurrentPosition();
-      if (position != null) {
+      // Get location with detailed status
+      final locationResult = await _locationService.getCurrentPositionWithStatus();
+      
+      if (locationResult.isSuccess) {
+        // Location retrieved successfully
         setState(() {
-          _currentPosition = position;
+          _currentPosition = locationResult.position;
           _isLoading = false;
-          _loadMarkers();
         });
+        _loadMarkers();
       } else {
+        // Handle different error cases
         setState(() {
           _isLoading = false;
         });
+        
+        if (mounted) {
+          _handleLocationError(locationResult);
+        }
       }
     } catch (e) {
       setState(() {
         _isLoading = false;
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading location: $e')),
+        _showErrorDialog(
+          'Location Error',
+          'An unexpected error occurred while getting your location. Please try again.',
         );
       }
     }
   }
 
+  void _handleLocationError(LocationResult result) {
+    switch (result.error) {
+      case LocationError.servicesDisabled:
+        _showLocationServicesDialog();
+        break;
+      case LocationError.permissionDenied:
+        _showPermissionDeniedDialog(false);
+        break;
+      case LocationError.permissionDeniedForever:
+        _showPermissionDeniedDialog(true);
+        break;
+      default:
+        _showErrorDialog('Location Error', result.message);
+    }
+  }
+
+  void _showLocationServicesDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Location Services Disabled'),
+          content: const Text(
+            'Location services are turned off. Please enable location services to see your current location on the map.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                // Continue without location
+                _loadDefaultMarkers();
+              },
+              child: const Text('Continue Without Location'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                // Open location settings
+                final opened = await _locationService.openLocationSettings();
+                if (opened) {
+                  // Retry getting location after user returns
+                  Future.delayed(const Duration(seconds: 1), () {
+                    _initializeMap();
+                  });
+                }
+              },
+              child: const Text('Open Settings'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showPermissionDeniedDialog(bool isPermanent) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(isPermanent ? 'Location Permission Required' : 'Location Permission Denied'),
+          content: Text(
+            isPermanent
+                ? 'Location permission has been permanently denied. Please enable it in app settings to use this feature.'
+                : 'Location permission is required to show your current location on the map.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                // Continue without location
+                _loadDefaultMarkers();
+              },
+              child: const Text('Continue Without Location'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                if (isPermanent) {
+                  // Open app settings
+                  await _locationService.openAppPermissionSettings();
+                } else {
+                  // Request permission again
+                  _initializeMap();
+                }
+              },
+              child: Text(isPermanent ? 'Open Settings' : 'Grant Permission'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showErrorDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _loadDefaultMarkers();
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _loadDefaultMarkers() {
+    // Load markers without user location
+    setState(() {
+      _markers = [
+        // Add some default markers or fetch from API
+        // You can show incidents reported by other users
+      ];
+    });
+  }
+
   void _loadMarkers() {
     // TODO: Load actual incident markers from API
     // For now, using sample markers
-    _markers = [
-      if (_currentPosition != null)
+    if (_currentPosition != null) {
+      _markers = [
         Marker(
           point: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
           width: 80,
@@ -68,40 +204,43 @@ class _MapScreenState extends State<MapScreen> {
             size: 40,
           ),
         ),
-      // Sample incident markers
-      Marker(
-        point: LatLng(
-          _currentPosition!.latitude + 0.01,
-          _currentPosition!.longitude + 0.01,
-        ),
-        width: 80,
-        height: 80,
-        child: GestureDetector(
-          onTap: () => _showIncidentDetails('Pollution Detected'),
-          child: const Icon(
-            Icons.warning,
-            color: Colors.red,
-            size: 35,
+        // Sample incident markers
+        Marker(
+          point: LatLng(
+            _currentPosition!.latitude + 0.01,
+            _currentPosition!.longitude + 0.01,
+          ),
+          width: 80,
+          height: 80,
+          child: GestureDetector(
+            onTap: () => _showIncidentDetails('Pollution Detected'),
+            child: const Icon(
+              Icons.warning,
+              color: Colors.red,
+              size: 35,
+            ),
           ),
         ),
-      ),
-      Marker(
-        point: LatLng(
-          _currentPosition!.latitude - 0.01,
-          _currentPosition!.longitude + 0.01,
-        ),
-        width: 80,
-        height: 80,
-        child: GestureDetector(
-          onTap: () => _showIncidentDetails('Illegal Logging'),
-          child: const Icon(
-            Icons.report_problem,
-            color: Colors.orange,
-            size: 35,
+        Marker(
+          point: LatLng(
+            _currentPosition!.latitude - 0.01,
+            _currentPosition!.longitude + 0.01,
+          ),
+          width: 80,
+          height: 80,
+          child: GestureDetector(
+            onTap: () => _showIncidentDetails('Illegal Logging'),
+            child: const Icon(
+              Icons.report_problem,
+              color: Colors.orange,
+              size: 35,
+            ),
           ),
         ),
-      ),
-    ];
+      ];
+    } else {
+      _loadDefaultMarkers();
+    }
   }
 
   void _showIncidentDetails(String title) {
@@ -188,7 +327,7 @@ class _MapScreenState extends State<MapScreen> {
               options: MapOptions(
                 initialCenter: _currentPosition != null
                     ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
-                    : const LatLng(0, 0),
+                    : const LatLng(20.5937, 78.9629), // Default to India center
                 initialZoom: 13,
                 minZoom: 5,
                 maxZoom: 18,
