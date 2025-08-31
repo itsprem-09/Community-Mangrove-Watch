@@ -76,13 +76,30 @@ class _MangroveHealthWidgetState extends State<MangroveHealthWidget> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Local Mangrove Health',
-                style: AppTheme.titleLarge.copyWith(fontSize: 16.sp),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Local Mangrove Health',
+                      style: AppTheme.titleLarge.copyWith(fontSize: 16.sp),
+                    ),
+                    if (_healthData != null && _healthData!['is_mock'] == true)
+                      Text(
+                        'Simulated Data',
+                        style: TextStyle(
+                          fontSize: 10.sp,
+                          color: Colors.orange[700],
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                  ],
+                ),
               ),
               IconButton(
                 icon: const Icon(Icons.refresh),
                 onPressed: _loadMangroveHealth,
+                tooltip: 'Refresh health data',
               ),
             ],
           ),

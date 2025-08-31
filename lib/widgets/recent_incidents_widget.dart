@@ -225,10 +225,7 @@ class _IncidentListTile extends StatelessWidget {
         ),
       ),
       onTap: () {
-        // TODO: Navigate to incident detail
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Viewing details for ${report.type.displayName}')),
-        );
+        context.push('/report-details', extra: report);
       },
     );
   }

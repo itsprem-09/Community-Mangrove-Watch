@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import '../../blocs/auth/auth_bloc.dart';
 import '../../core/theme.dart';
 import '../../services/location_service.dart';
+import '../../services/dashboard_service.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/recent_incidents_widget.dart';
 import '../../widgets/mangrove_health_widget.dart';
@@ -20,14 +21,18 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final LocationService _locationService = LocationService();
+  final DashboardService _dashboardService = DashboardService();
   Position? _currentPosition;
   String _greeting = 'Good morning';
+  Map<String, dynamic>? _dashboardData;
+  bool _isLoadingDashboard = true;
 
   @override
   void initState() {
     super.initState();
     _setGreeting();
     _getCurrentLocation();
+    _loadDashboardData();
   }
 
   void _setGreeting() {
@@ -52,6 +57,41 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       print('Error getting location: $e');
     }
+  }
+
+  Future<void> _loadDashboardData() async {
+    try {
+      setState(() {
+        _isLoadingDashboard = true;
+      });
+      
+      final data = await _dashboardService.getDashboardData();
+      setState(() {
+        _dashboardData = data;
+        _isLoadingDashboard = false;
+      });
+    } catch (e) {
+      print('Error loading dashboard data: $e');
+      setState(() {
+        _isLoadingDashboard = false;
+      });
+    }
+  }
+
+  String _formatNumber(int number) {
+    if (number >= 1000000) {
+      return '${(number / 1000000).toStringAsFixed(1)}M';
+    } else if (number >= 1000) {
+      return '${(number / 1000).toStringAsFixed(1)}k';
+    }
+    return number.toString();
+  }
+
+  String _formatArea(double area) {
+    if (area >= 1000) {
+      return '${(area / 1000).toStringAsFixed(1)}k ha';
+    }
+    return '${area.toStringAsFixed(0)} ha';
   }
 
   @override
@@ -136,9 +176,11 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          // Refresh data
-          await _getCurrentLocation();
-          setState(() {});
+          // Refresh all data
+          await Future.wait([
+            _getCurrentLocation(),
+            _loadDashboardData(),
+          ]);
         },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -244,61 +286,98 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
               
               // Dashboard Statistics
-              Text(
-                'Community Impact',
-                style: AppTheme.titleLarge.copyWith(fontSize: 18.sp),
+              Row(
+                children: [
+                  Text(
+                    'Community Impact',
+                    style: AppTheme.titleLarge.copyWith(fontSize: 18.sp),
+                  ),
+                  const Spacer(),
+                  if (_dashboardData != null && _dashboardData!['is_mock'] == true)
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                      ),
+                      child: Text(
+                        'Demo Data',
+                        style: TextStyle(
+                          fontSize: 10.sp,
+                          color: Colors.orange[700],
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                ],
               ),
               SizedBox(height: 16.h),
               
-              Row(
-                children: [
-                  Expanded(
-                    child: DashboardCard(
-                      title: 'Total Reports',
-                      value: '1,234',
-                      icon: Icons.report,
-                      trend: '+12%',
-                      trendUp: true,
+              if (_isLoadingDashboard)
+                const Center(
+                  child: CircularProgressIndicator(),
+                )
+              else if (_dashboardData != null) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: DashboardCard(
+                        title: 'Total Reports',
+                        value: _formatNumber(_dashboardData!['total_reports'] ?? 0),
+                        icon: Icons.report,
+                        trend: '+${(_dashboardData!['growth_rates']?['reports'] ?? 0.0).toStringAsFixed(1)}%',
+                        trendUp: (_dashboardData!['growth_rates']?['reports'] ?? 0.0) > 0,
+                      ),
+                    ),
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: DashboardCard(
+                        title: 'Verified',
+                        value: _formatNumber(_dashboardData!['verified_reports'] ?? 0),
+                        icon: Icons.verified,
+                        trend: '+${(_dashboardData!['growth_rates']?['verification'] ?? 0.0).toStringAsFixed(1)}%',
+                        trendUp: (_dashboardData!['growth_rates']?['verification'] ?? 0.0) > 0,
+                      ),
+                    ),
+                  ],
+                ),
+                
+                SizedBox(height: 12.h),
+                
+                Row(
+                  children: [
+                    Expanded(
+                      child: DashboardCard(
+                        title: 'Active Users',
+                        value: _formatNumber(_dashboardData!['active_users'] ?? 0),
+                        icon: Icons.people,
+                        trend: '+${(_dashboardData!['growth_rates']?['users'] ?? 0.0).toStringAsFixed(1)}%',
+                        trendUp: (_dashboardData!['growth_rates']?['users'] ?? 0.0) > 0,
+                      ),
+                    ),
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: DashboardCard(
+                        title: 'Areas Protected',
+                        value: _formatArea(_dashboardData!['protected_area_ha'] ?? 0.0),
+                        icon: Icons.forest,
+                        trend: '+${(_dashboardData!['growth_rates']?['protected_area'] ?? 0.0).toStringAsFixed(1)}%',
+                        trendUp: (_dashboardData!['growth_rates']?['protected_area'] ?? 0.0) > 0,
+                      ),
+                    ),
+                  ],
+                ),
+              ] else
+                Container(
+                  height: 120.h,
+                  child: const Center(
+                    child: Text(
+                      'Failed to load dashboard data',
+                      style: TextStyle(color: Colors.grey),
                     ),
                   ),
-                  SizedBox(width: 12.w),
-                  Expanded(
-                    child: DashboardCard(
-                      title: 'Verified',
-                      value: '987',
-                      icon: Icons.verified,
-                      trend: '+8%',
-                      trendUp: true,
-                    ),
-                  ),
-                ],
-              ),
-              
-              SizedBox(height: 12.h),
-              
-              Row(
-                children: [
-                  Expanded(
-                    child: DashboardCard(
-                      title: 'Active Users',
-                      value: '456',
-                      icon: Icons.people,
-                      trend: '+15%',
-                      trendUp: true,
-                    ),
-                  ),
-                  SizedBox(width: 12.w),
-                  Expanded(
-                    child: DashboardCard(
-                      title: 'Areas Protected',
-                      value: '23.5k ha',
-                      icon: Icons.forest,
-                      trend: '+5%',
-                      trendUp: true,
-                    ),
-                  ),
-                ],
-              ),
+                ),
               
               SizedBox(height: 24.h),
               

@@ -9,6 +9,8 @@ import '../screens/profile/profile_screen.dart';
 import '../screens/leaderboard/leaderboard_screen.dart';
 import '../screens/map/map_screen.dart';
 import '../screens/detection/mangrove_detection_screen.dart';
+import '../screens/report/report_details_screen.dart';
+import '../models/incident_report.dart';
 
 class AppRouter {
   static final GoRouter router = GoRouter(
@@ -53,6 +55,13 @@ class AppRouter {
       GoRoute(
         path: '/detection',
         builder: (context, state) => const MangroveDetectionScreen(),
+      ),
+      GoRoute(
+        path: '/report-details',
+        builder: (context, state) {
+          final report = state.extra as IncidentReport;
+          return ReportDetailsScreen(report: report);
+        },
       ),
     ],
   );

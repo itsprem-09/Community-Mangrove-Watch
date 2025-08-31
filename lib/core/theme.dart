@@ -147,4 +147,16 @@ class AppTheme {
     fontWeight: FontWeight.w500,
     color: textSecondary,
   );
+
+  static const TextStyle titleMedium = TextStyle(
+    fontSize: 16,
+    fontWeight: FontWeight.w500,
+    color: textPrimary,
+  );
+
+  static const TextStyle labelLarge = TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.w500,
+    color: textPrimary,
+  );
 }

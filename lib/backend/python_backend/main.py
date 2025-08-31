@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, status
+from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -56,6 +56,7 @@ app.add_middleware(
 
 # Security
 security = HTTPBearer()
+security_optional = HTTPBearer(auto_error=False)  # Optional security that doesn't auto-error
 
 # Database
 db = Database()
@@ -125,26 +126,35 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=401, detail="Invalid token")
 
 # Optional authentication for internal API calls
-async def get_current_user_optional(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)):
+async def get_current_user_optional(request: Request) -> Optional[User]:
     """Get current authenticated user or None for internal API calls"""
-    if not credentials:
-        return None
     try:
-        user = await auth_service.get_current_user(credentials.credentials)
+        # Check for Authorization header
+        auth_header = request.headers.get("authorization")
+        if not auth_header:
+            return None
+        
+        # Extract token from Bearer format
+        if not auth_header.startswith("Bearer "):
+            return None
+        
+        token = auth_header.split(" ")[1]
+        user = await auth_service.get_current_user(token)
         return user
-    except:
+    except Exception as e:
+        # Log the error for debugging but don't raise it
+        logger.debug(f"Optional auth failed: {e}")
         return None
 
 # Incident reporting endpoints
 @app.post("/incidents")
 async def create_incident(
-    incident_data: Dict[str, Any],
-    current_user: Optional[User] = Depends(get_current_user_optional)
+    incident_data: Dict[str, Any]
 ):
     """Create a new incident report"""
     try:
-        # Use user ID if authenticated, otherwise use anonymous
-        user_id = current_user.id if current_user else "anonymous"
+        # Use anonymous user ID since this is a public endpoint
+        user_id = "anonymous"
         
         # Process incident data
         incident = {
@@ -180,8 +190,7 @@ async def create_incident(
 async def get_incidents(
     skip: int = 0,
     limit: int = 50,
-    status_filter: Optional[str] = None,
-    current_user: Optional[User] = Depends(get_current_user_optional)
+    status_filter: Optional[str] = None
 ):
     """Get list of incidents with pagination and filtering"""
     try:
@@ -242,25 +251,26 @@ async def analyze_image_with_gemini(
 # Mangrove prediction using GEE and ML model
 @app.post("/predict-mangrove")
 async def predict_mangrove(
-    request: Dict[str, Any],
+    prediction_request: Dict[str, Any],
+    request: Request,
     current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Predict mangrove coverage at given coordinates using satellite data"""
     try:
         # Get satellite data from GEE
         satellite_data = await gee_service.get_satellite_data(
-            request.latitude,
-            request.longitude,
-            request.start_date,
-            request.end_date
+            prediction_request["latitude"],
+            prediction_request["longitude"],
+            prediction_request.get("start_date"),
+            prediction_request.get("end_date")
         )
         
         # Run ML prediction
         prediction = await ml_service.predict_mangrove_coverage(satellite_data)
         
         return PredictionResponse(
-            latitude=request.latitude,
-            longitude=request.longitude,
+            latitude=prediction_request["latitude"],
+            longitude=prediction_request["longitude"],
             predicted_coverage=prediction["coverage"],
             confidence=prediction["confidence"],
             ndvi_value=prediction["ndvi"],
@@ -313,9 +323,7 @@ async def verify_incident(
 
 # Analytics endpoints
 @app.get("/analytics/dashboard")
-async def get_dashboard_analytics(
-    current_user: User = Depends(get_current_user)
-):
+async def get_dashboard_analytics():
     """Get dashboard analytics data"""
     try:
         analytics = await db.get_dashboard_analytics()
@@ -376,6 +384,36 @@ async def analyze_image_public(image: UploadFile = File(...)):
 # ONNX-based mangrove detection endpoint
 @app.post("/predict-mangrove-image")
 async def predict_mangrove_image(image: UploadFile = File(...)):
+    """Predict if uploaded image contains mangrove using ONNX model"""
+    try:
+        # Validate image file
+        if not image.content_type or not image.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="Invalid image file format")
+        
+        # Read image data
+        image_data = await image.read()
+        
+        if len(image_data) == 0:
+            raise HTTPException(status_code=400, detail="Empty image file")
+        
+        # Get prediction from ML service using ONNX model
+        prediction = await ml_service.predict_mangrove_from_image(image_data)
+        
+        return {
+            "prediction": prediction,
+            "status": "success",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error predicting mangrove from image: {e}")
+        raise HTTPException(status_code=500, detail=f"Error analyzing image: {str(e)}")
+
+# Alias endpoint for verify-mangrove-image (same as predict-mangrove-image)
+@app.post("/verify-mangrove-image")
+async def verify_mangrove_image(image: UploadFile = File(...)):
     """Predict if uploaded image contains mangrove using ONNX model"""
     try:
         # Validate image file
