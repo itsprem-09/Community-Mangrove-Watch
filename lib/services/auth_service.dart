@@ -9,9 +9,14 @@ import 'api_config.dart';
 class AuthService {
   static const String _tokenKey = 'auth_token';
   static const String _userKey = 'user_data';
-  static String get baseUrl => ApiConfig.backendBaseUrl;
+  // Auth service connects directly to Express backend
+  static String get baseUrl => ApiConfig.expressBackendUrl;
   static const Duration _timeout = Duration(seconds: 30);
   static const int _maxRetries = 3;
+  
+  // Cache for working URL to avoid repeated tests
+  static String? _workingUrl;
+  static DateTime? _lastUrlTest;
 
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -47,23 +52,29 @@ class AuthService {
       print('[AuthService] Attempting login for: $email');
       print('[AuthService] Using backend URL: $baseUrl');
       
-      // First check if server is reachable
-      try {
-        final healthCheck = await http.get(
-          Uri.parse('$baseUrl/health'),
-        ).timeout(const Duration(seconds: 5));
-        print('[AuthService] Server health check status: ${healthCheck.statusCode}');
-      } catch (e) {
-        print('[AuthService] Server health check failed: $e');
+      // Print detailed configuration for debugging
+      ApiConfig.printConfig();
+      
+      // Test server connectivity with fallback URLs
+      final workingUrl = await _findWorkingUrl();
+      if (workingUrl == null) {
         return {
           'success': false,
-          'message': 'Cannot connect to server at $baseUrl. Please ensure the server is running and check your network connection.'
+          'message': 'Cannot connect to server. Please ensure the backend server is running.\n\nTried URLs: ${ApiConfig.fallbackUrls.join(', ')}',
+          'debug_info': {
+            'primary_url': baseUrl,
+            'fallback_urls': ApiConfig.fallbackUrls,
+            'platform': Platform.isAndroid ? 'Android' : Platform.operatingSystem,
+          }
         };
       }
       
+      print('[AuthService] Using working URL: $workingUrl');
+      _workingUrl = workingUrl; // Cache the working URL
+      
       final response = await _makeRequestWithRetry(
         () => http.post(
-          Uri.parse('$baseUrl/auth/login'),
+          Uri.parse('$workingUrl/auth/login'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
             'email': email,
@@ -104,12 +115,21 @@ class AuthService {
 
   Future<Map<String, dynamic>> register(Map<String, dynamic> userData) async {
     try {
-      print('[AuthService] Registering user with URL: $baseUrl/auth/register');
+      // Find working URL first
+      final workingUrl = await _findWorkingUrl();
+      if (workingUrl == null) {
+        return {
+          'success': false,
+          'message': 'Cannot connect to server. Please ensure the backend server is running.\n\nTried URLs: ${ApiConfig.fallbackUrls.join(', ')}',
+        };
+      }
+      
+      print('[AuthService] Registering user with URL: $workingUrl/auth/register');
       print('[AuthService] User data: ${userData.keys.join(', ')}'); // Don't log sensitive data
       
       final response = await _makeRequestWithRetry(
         () => http.post(
-          Uri.parse('$baseUrl/auth/register'),
+          Uri.parse('$workingUrl/auth/register'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(userData),
         ).timeout(_timeout),
@@ -157,8 +177,9 @@ class AuthService {
   Future<Map<String, dynamic>?> getUserProfile() async {
     try {
       final headers = await getAuthHeaders();
+      final currentUrl = _currentBaseUrl;
       final response = await http.get(
-        Uri.parse('$baseUrl/user/profile'),
+        Uri.parse('$currentUrl/user/profile'),
         headers: headers,
       );
 
@@ -235,6 +256,49 @@ class AuthService {
     throw Exception('Failed to complete $operation after $_maxRetries attempts');
   }
 
+  // Method to find a working URL from the fallback list
+  Future<String?> _findWorkingUrl() async {
+    // Return cached URL if it's recent (less than 5 minutes old)
+    if (_workingUrl != null && _lastUrlTest != null) {
+      final timeSinceLastTest = DateTime.now().difference(_lastUrlTest!);
+      if (timeSinceLastTest.inMinutes < 5) {
+        print('[AuthService] Using cached working URL: $_workingUrl');
+        return _workingUrl;
+      }
+    }
+    
+    print('[AuthService] Testing fallback URLs for connectivity...');
+    final fallbackUrls = ApiConfig.fallbackUrls;
+    
+    for (int i = 0; i < fallbackUrls.length; i++) {
+      final url = fallbackUrls[i];
+      print('[AuthService] Testing URL ${i + 1}/${fallbackUrls.length}: $url');
+      
+      try {
+        final response = await http.get(
+          Uri.parse('$url/health'),
+        ).timeout(const Duration(seconds: 5));
+        
+        if (response.statusCode == 200) {
+          print('[AuthService] ✅ URL working: $url');
+          _workingUrl = url;
+          _lastUrlTest = DateTime.now();
+          return url;
+        } else {
+          print('[AuthService] ❌ URL returned ${response.statusCode}: $url');
+        }
+      } catch (e) {
+        print('[AuthService] ❌ URL failed ($e): $url');
+      }
+    }
+    
+    print('[AuthService] ❌ No working URLs found');
+    return null;
+  }
+  
+  // Helper method to get the current working base URL
+  String get _currentBaseUrl => _workingUrl ?? baseUrl;
+  
   // Helper method to handle network errors
   Map<String, dynamic> _handleNetworkError(dynamic error, String operation) {
     print('[AuthService] Network error during $operation: $error');

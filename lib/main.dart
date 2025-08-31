@@ -9,9 +9,11 @@ import 'core/theme.dart';
 import 'services/api_service.dart';
 import 'services/location_service.dart';
 import 'services/auth_service.dart';
+import 'services/onnx_model_service.dart';
 import 'blocs/auth/auth_bloc.dart';
 import 'blocs/report/report_bloc.dart';
 import 'blocs/leaderboard/leaderboard_bloc.dart';
+import 'blocs/image_analysis/image_analysis_bloc.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,6 +45,9 @@ class MangroveWatchApp extends StatelessWidget {
           ),
           BlocProvider<LeaderboardBloc>(
             create: (context) => LeaderboardBloc(context.read<ApiService>()),
+          ),
+          BlocProvider<ImageAnalysisBloc>(
+            create: (context) => ImageAnalysisBloc(context.read<ApiService>()),
           ),
         ],
         child: ScreenUtilInit(

@@ -194,10 +194,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   SizedBox(width: 12.w),
                   Expanded(
                     child: _QuickActionCard(
-                      title: 'Scan Image',
-                      icon: Icons.camera_alt,
+                      title: 'Detect Mangrove',
+                      icon: Icons.nature,
                       color: AppTheme.accentBlue,
-                      onTap: () => context.push('/camera'),
+                      onTap: () => context.push('/detection'),
                     ),
                   ),
                 ],
@@ -364,8 +364,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => context.push('/camera'),
-        child: const Icon(Icons.camera_alt),
+        onPressed: () => context.push('/detection'),
+        child: const Icon(Icons.nature),
       ),
     );
   }

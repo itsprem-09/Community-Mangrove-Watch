@@ -373,6 +373,36 @@ async def analyze_image_public(image: UploadFile = File(...)):
                 pass
         raise HTTPException(status_code=500, detail=f"Error analyzing image: {str(e)}")
 
+# ONNX-based mangrove detection endpoint
+@app.post("/predict-mangrove-image")
+async def predict_mangrove_image(image: UploadFile = File(...)):
+    """Predict if uploaded image contains mangrove using ONNX model"""
+    try:
+        # Validate image file
+        if not image.content_type or not image.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="Invalid image file format")
+        
+        # Read image data
+        image_data = await image.read()
+        
+        if len(image_data) == 0:
+            raise HTTPException(status_code=400, detail="Empty image file")
+        
+        # Get prediction from ML service using ONNX model
+        prediction = await ml_service.predict_mangrove_from_image(image_data)
+        
+        return {
+            "prediction": prediction,
+            "status": "success",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error predicting mangrove from image: {e}")
+        raise HTTPException(status_code=500, detail=f"Error analyzing image: {str(e)}")
+
 # Satellite analysis endpoint
 @app.get("/satellite-analysis/{lat}/{lng}")
 async def get_satellite_analysis(
@@ -469,6 +499,219 @@ async def health_check():
         "timestamp": datetime.utcnow().isoformat()
     }
 
+# GEE Visualization endpoints
+@app.get("/gee/mangrove-visualization")
+async def get_mangrove_visualization(
+    center_lat: float = -2.0164,
+    center_lng: float = -44.5626,
+    zoom: int = 9
+):
+    """Get mangrove visualization data from Google Earth Engine"""
+    try:
+        visualization_data = await gee_service.get_mangrove_visualization_data(
+            center_lat, center_lng, zoom
+        )
+        return visualization_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting visualization data: {str(e)}")
+
+@app.get("/gee/mangrove-html")
+async def get_mangrove_html(
+    center_lat: float = -2.0164,
+    center_lng: float = -44.5626,
+    zoom: int = 9
+):
+    """Generate HTML page with embedded GEE mangrove visualization"""
+    try:
+        visualization_data = await gee_service.get_mangrove_visualization_data(
+            center_lat, center_lng, zoom
+        )
+        
+        # Generate HTML with embedded map using Leaflet and GEE tiles
+        html_content = f'''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mangrove Detection - Global Map</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        body {{
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }}
+        #map {{
+            height: 100vh;
+            width: 100%;
+        }}
+        .info-panel {{
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            z-index: 1000;
+            min-width: 250px;
+        }}
+        .info-panel h3 {{
+            margin: 0 0 10px 0;
+            color: #2c5234;
+        }}
+        .stat-item {{
+            margin: 5px 0;
+            font-size: 14px;
+        }}
+        .stat-label {{
+            font-weight: bold;
+            color: #555;
+        }}
+        .mangrove-color {{
+            color: #d40115;
+            font-weight: bold;
+        }}
+        .legend {{
+            position: absolute;
+            bottom: 30px;
+            left: 10px;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }}
+        .legend-item {{
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+        }}
+        .legend-color {{
+            width: 20px;
+            height: 20px;
+            margin-right: 8px;
+            border: 1px solid #ccc;
+        }}
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="info-panel">
+        <h3>🌿 Mangrove Detection</h3>
+        <div class="stat-item">
+            <span class="stat-label">Dataset:</span> {visualization_data['layer_info']['name']}
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Year:</span> {visualization_data['layer_info']['year']}
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Resolution:</span> {visualization_data['layer_info']['resolution']}
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Center:</span> {visualization_data['center']['latitude']:.4f}, {visualization_data['center']['longitude']:.4f}
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Mangrove Coverage:</span> 
+            <span class="mangrove-color">{visualization_data['statistics']['mangrove_pixel_count']:.0f} pixels</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Avg NDVI:</span> {visualization_data['statistics']['ndvi_mean']:.3f}
+        </div>
+    </div>
+    
+    <div class="legend">
+        <h4 style="margin: 0 0 8px 0; font-size: 14px;">Legend</h4>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: #d40115;"></div>
+            <span>Mangrove Areas</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: #4a90e2;"></div>
+            <span>Water Bodies</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: #7ed321;"></div>
+            <span>Other Vegetation</span>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script>
+        // Initialize the map
+        var map = L.map('map').setView([{visualization_data['center']['latitude']}, {visualization_data['center']['longitude']}], {visualization_data['zoom']});
+
+        // Add base layer (OpenStreetMap)
+        L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 18
+        }}).addTo(map);
+        
+        // Add satellite base layer option
+        var satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{{z}}/{{y}}/{{x}}', {{
+            attribution: '© Esri, Maxar, GeoEye, Earthstar Geographics, CNES/Airbus DS, USDA, USGS, AeroGRID, IGN, and the GIS User Community'
+        }});
+        
+        // Add GEE mangrove layer if available
+        if ('{visualization_data['tile_url_template']}' && '{visualization_data['tile_url_template']}' !== 'https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png') {{
+            var mangroveLayer = L.tileLayer('{visualization_data['tile_url_template']}', {{
+                attribution: 'Global Mangrove Watch via Google Earth Engine',
+                opacity: 0.7,
+                maxZoom: 18
+            }});
+            mangroveLayer.addTo(map);
+        }} else {{
+            // Add mock mangrove areas for demonstration
+            // These are approximate locations where mangroves commonly occur
+            var mangroveAreas = [
+                {{"lat": -2.0164, "lng": -44.5626, "name": "Amazon Delta, Brazil"}},
+                {{"lat": 25.7617, "lng": -80.1918, "name": "Everglades, Florida"}},
+                {{"lat": -17.8252, "lng": 25.8619, "name": "Okavango Delta, Botswana"}},
+                {{"lat": 22.3193, "lng": 114.1694, "name": "Hong Kong Mangroves"}},
+                {{"lat": -12.0464, "lng": 96.8297, "name": "Cocos Islands"}},
+                {{"lat": 13.0827, "lng": 80.2707, "name": "Chennai, India"}}
+            ];
+            
+            mangroveAreas.forEach(function(area) {{
+                var circle = L.circle([area.lat, area.lng], {{
+                    color: '#d40115',
+                    fillColor: '#d40115',
+                    fillOpacity: 0.6,
+                    radius: 10000
+                }}).addTo(map);
+                
+                circle.bindPopup('<b>Mangrove Area</b><br>' + area.name);
+            }});
+        }}
+        
+        // Layer control
+        var baseLayers = {{
+            "OpenStreetMap": map._layers[Object.keys(map._layers)[0]],
+            "Satellite": satelliteLayer
+        }};
+        
+        L.control.layers(baseLayers).addTo(map);
+        
+        // Add click handler to show coordinates
+        map.on('click', function(e) {{
+            console.log('Clicked at: ' + e.latlng);
+        }});
+        
+        // Add scale control
+        L.control.scale().addTo(map);
+    </script>
+</body>
+</html>
+        '''
+        
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(content=html_content)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating HTML: {str(e)}")
+
 # API info endpoint
 @app.get("/")
 async def root():
@@ -482,6 +725,7 @@ async def root():
             "analysis": "/analyze-image, /predict-mangrove",
             "incidents": "/incidents",
             "analytics": "/analytics/dashboard, /analytics/mangrove-trends",
+            "gee": "/gee/mangrove-visualization, /gee/mangrove-html",
             "health": "/health"
         }
     }

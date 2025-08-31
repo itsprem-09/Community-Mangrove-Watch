@@ -5,6 +5,10 @@ import joblib
 import os
 from typing import Dict, Any
 import logging
+import onnxruntime as ort
+from PIL import Image
+import cv2
+from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
@@ -12,13 +16,23 @@ class MLModelService:
     def __init__(self):
         self.nn_model = None
         self.rf_model = None
+        self.onnx_session = None
         self.model_loaded = False
+        self.onnx_loaded = False
         self.models_path = "models/"
     
     async def load_model(self):
         """Load pre-trained models"""
         try:
-            # Try to load existing models
+            # Try to load ONNX model first
+            onnx_model_path = os.path.join(self.models_path, "best.onnx")
+            
+            if os.path.exists(onnx_model_path):
+                self.onnx_session = ort.InferenceSession(onnx_model_path)
+                self.onnx_loaded = True
+                logger.info("ONNX model loaded successfully")
+            
+            # Try to load existing TensorFlow models
             nn_model_path = os.path.join(self.models_path, "mangrove_nn_model.h5")
             rf_model_path = os.path.join(self.models_path, "mangrove_rf_model.pkl")
             
@@ -225,6 +239,124 @@ class MLModelService:
         health *= coverage
         
         return min(100.0, health)
+    
+    def preprocess_image(self, image_data: bytes) -> np.ndarray:
+        """Preprocess image for ONNX model inference"""
+        try:
+            # Convert bytes to PIL Image
+            image = Image.open(BytesIO(image_data))
+            
+            # Convert to RGB if not already
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            # Resize image (assuming model expects 224x224, adjust as needed)
+            image = image.resize((224, 224))
+            
+            # Convert to numpy array
+            image_array = np.array(image)
+            
+            # Normalize to [0,1] range
+            image_array = image_array.astype(np.float32) / 255.0
+            
+            # Add batch dimension and transpose to CHW format (Channel, Height, Width)
+            # Most ONNX models expect NCHW format (Batch, Channel, Height, Width)
+            image_array = np.transpose(image_array, (2, 0, 1))  # HWC to CHW
+            image_array = np.expand_dims(image_array, axis=0)  # Add batch dimension
+            
+            return image_array
+            
+        except Exception as e:
+            logger.error(f"Error preprocessing image: {e}")
+            raise e
+    
+    async def predict_mangrove_from_image(self, image_data: bytes) -> Dict[str, Any]:
+        """Predict if image contains mangrove using ONNX model"""
+        try:
+            if not self.onnx_loaded or self.onnx_session is None:
+                # Fallback to rule-based image analysis
+                return await self._fallback_image_prediction(image_data)
+            
+            # Preprocess image
+            processed_image = self.preprocess_image(image_data)
+            
+            # Get input name from ONNX model
+            input_name = self.onnx_session.get_inputs()[0].name
+            
+            # Run inference
+            outputs = self.onnx_session.run(None, {input_name: processed_image})
+            
+            # Process outputs (assuming binary classification)
+            prediction = outputs[0][0]  # Adjust based on your model's output format
+            
+            # Convert to probability if needed
+            if len(prediction) == 2:  # Binary classification with two outputs
+                mangrove_prob = float(prediction[1])  # Probability of mangrove class
+            else:  # Single output
+                mangrove_prob = float(prediction[0]) if prediction[0] <= 1.0 else 1.0 / (1.0 + np.exp(-prediction[0]))
+            
+            # Determine if it's mangrove based on threshold
+            is_mangrove = mangrove_prob > 0.5
+            confidence = max(mangrove_prob, 1.0 - mangrove_prob)  # Confidence is the max probability
+            
+            return {
+                "is_mangrove": is_mangrove,
+                "confidence": float(confidence),
+                "mangrove_probability": float(mangrove_prob),
+                "prediction_class": "mangrove" if is_mangrove else "not_mangrove",
+                "model_type": "onnx",
+                "message": f"This image {'contains' if is_mangrove else 'does not contain'} mangrove vegetation with {confidence*100:.1f}% confidence."
+            }
+            
+        except Exception as e:
+            logger.error(f"ONNX prediction failed: {e}")
+            # Fallback to basic analysis
+            return await self._fallback_image_prediction(image_data)
+    
+    async def _fallback_image_prediction(self, image_data: bytes) -> Dict[str, Any]:
+        """Fallback image analysis when ONNX model is not available"""
+        try:
+            # Simple color-based analysis as fallback
+            image = Image.open(BytesIO(image_data))
+            image_array = np.array(image)
+            
+            # Calculate green ratio (simple heuristic)
+            if len(image_array.shape) == 3 and image_array.shape[2] >= 3:
+                green_ratio = np.mean(image_array[:, :, 1]) / (np.mean(image_array) + 1e-8)
+                
+                # Simple rule: high green content might indicate vegetation
+                is_mangrove = green_ratio > 1.1  # Adjust threshold as needed
+                confidence = min(0.6, abs(green_ratio - 1.0) + 0.3)  # Lower confidence for fallback
+                
+                return {
+                    "is_mangrove": is_mangrove,
+                    "confidence": float(confidence),
+                    "mangrove_probability": float(green_ratio - 0.5) if green_ratio > 0.5 else 0.0,
+                    "prediction_class": "mangrove" if is_mangrove else "not_mangrove",
+                    "model_type": "fallback_color_analysis",
+                    "message": f"Basic analysis suggests this image {'might contain' if is_mangrove else 'likely does not contain'} vegetation (confidence: {confidence*100:.1f}%). For accurate results, please ensure ONNX model is loaded."
+                }
+            else:
+                # Cannot analyze grayscale or invalid images
+                return {
+                    "is_mangrove": False,
+                    "confidence": 0.1,
+                    "mangrove_probability": 0.0,
+                    "prediction_class": "unknown",
+                    "model_type": "fallback_error",
+                    "message": "Unable to analyze image format. Please ensure the image is a valid color image."
+                }
+                
+        except Exception as e:
+            logger.error(f"Fallback prediction failed: {e}")
+            return {
+                "is_mangrove": False,
+                "confidence": 0.0,
+                "mangrove_probability": 0.0,
+                "prediction_class": "error",
+                "model_type": "error",
+                "message": f"Error analyzing image: {str(e)}"
+            }
     
     async def retrain_model(self, new_data: Dict[str, Any]):
         """Retrain model with new validated data"""

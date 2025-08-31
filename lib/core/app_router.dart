@@ -8,6 +8,7 @@ import '../screens/report/camera_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/leaderboard/leaderboard_screen.dart';
 import '../screens/map/map_screen.dart';
+import '../screens/detection/mangrove_detection_screen.dart';
 
 class AppRouter {
   static final GoRouter router = GoRouter(
@@ -48,6 +49,10 @@ class AppRouter {
       GoRoute(
         path: '/map',
         builder: (context, state) => const MapScreen(),
+      ),
+      GoRoute(
+        path: '/detection',
+        builder: (context, state) => const MangroveDetectionScreen(),
       ),
     ],
   );
