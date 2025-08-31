@@ -114,60 +114,65 @@ class _MangroveHealthWidgetState extends State<MangroveHealthWidget> {
             Column(
               children: [
                 // Health Score Circle
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: SizedBox(
-                        height: 120.w,
-                        child: PieChart(
-                          PieChartData(
-                            sectionsSpace: 0,
-                            centerSpaceRadius: 40.w,
-                            sections: [
-                              PieChartSectionData(
-                                value: (_healthData!['predicted_coverage'] ?? 0.0) * 100,
-                                color: AppTheme.primaryGreen,
-                                title: '',
-                                radius: 20.w,
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    return Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: SizedBox(
+                            height: constraints.maxWidth > 300 ? 120.w : 100.w,
+                            child: PieChart(
+                              PieChartData(
+                                sectionsSpace: 0,
+                                centerSpaceRadius: constraints.maxWidth > 300 ? 40.w : 30.w,
+                                sections: [
+                                  PieChartSectionData(
+                                    value: (_healthData!['predicted_coverage'] ?? 0.0) * 100,
+                                    color: AppTheme.primaryGreen,
+                                    title: '',
+                                    radius: constraints.maxWidth > 300 ? 20.w : 15.w,
+                                  ),
+                                  PieChartSectionData(
+                                    value: (100 - ((_healthData!['predicted_coverage'] ?? 0.0) * 100)).toDouble(),
+                                    color: AppTheme.textSecondary.withOpacity(0.2),
+                                    title: '',
+                                    radius: constraints.maxWidth > 300 ? 20.w : 15.w,
+                                  ),
+                                ],
                               ),
-                              PieChartSectionData(
-                                value: (100 - ((_healthData!['predicted_coverage'] ?? 0.0) * 100)).toDouble(),
-                                color: AppTheme.textSecondary.withOpacity(0.2),
-                                title: '',
-                                radius: 20.w,
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 12.w),
+                        Expanded(
+                          flex: 3,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _HealthMetric(
+                                label: 'Coverage',
+                                value: '${((_healthData!['predicted_coverage'] ?? 0.0) * 100).toStringAsFixed(1)}%',
+                                icon: Icons.forest,
+                              ),
+                              SizedBox(height: 8.h),
+                              _HealthMetric(
+                                label: 'NDVI',
+                                value: (_healthData!['ndvi_value'] ?? 0.0).toStringAsFixed(2),
+                                icon: Icons.eco,
+                              ),
+                              SizedBox(height: 8.h),
+                              _HealthMetric(
+                                label: 'Confidence',
+                                value: '${((_healthData!['confidence'] ?? 0.0) * 100).toStringAsFixed(0)}%',
+                                icon: Icons.verified,
                               ),
                             ],
                           ),
                         ),
-                      ),
-                    ),
-                    Expanded(
-                      flex: 3,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _HealthMetric(
-                            label: 'Coverage',
-                            value: '${((_healthData!['predicted_coverage'] ?? 0.0) * 100).toStringAsFixed(1)}%',
-                            icon: Icons.forest,
-                          ),
-                          SizedBox(height: 8.h),
-                          _HealthMetric(
-                            label: 'NDVI',
-                            value: (_healthData!['ndvi_value'] ?? 0.0).toStringAsFixed(2),
-                            icon: Icons.eco,
-                          ),
-                          SizedBox(height: 8.h),
-                          _HealthMetric(
-                            label: 'Confidence',
-                            value: '${((_healthData!['confidence'] ?? 0.0) * 100).toStringAsFixed(0)}%',
-                            icon: Icons.verified,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                      ],
+                    );
+                  },
                 ),
                 
                 SizedBox(height: 16.h),

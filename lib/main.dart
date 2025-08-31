@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:flutter/services.dart';
 
 import 'core/app_router.dart';
 import 'core/theme.dart';
@@ -52,12 +53,38 @@ class MangroveWatchApp extends StatelessWidget {
         ],
         child: ScreenUtilInit(
           designSize: const Size(375, 812),
-          child: MaterialApp.router(
-            title: 'Mangrove Watch',
-            theme: AppTheme.lightTheme,
-            darkTheme: AppTheme.darkTheme,
-            routerConfig: AppRouter.router,
-            debugShowCheckedModeBanner: false,
+          minTextAdapt: true,
+          splitScreenMode: true,
+          child: Builder(
+            builder: (context) {
+              // Set up global error handling for overflow
+              ErrorWidget.builder = (FlutterErrorDetails details) {
+                if (details.exception.toString().contains('overflow')) {
+                  return Container(
+                    alignment: Alignment.center,
+                    child: const Text(
+                      '⚠️ Layout Overflow\nContent too large for screen',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.red, fontSize: 12),
+                    ),
+                  );
+                }
+                return const Center(
+                  child: Text(
+                    '⚠️ Something went wrong',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                );
+              };
+              
+              return MaterialApp.router(
+                title: 'Mangrove Watch',
+                theme: AppTheme.lightTheme,
+                darkTheme: AppTheme.darkTheme,
+                routerConfig: AppRouter.router,
+                debugShowCheckedModeBanner: false,
+              );
+            },
           ),
         ),
       ),

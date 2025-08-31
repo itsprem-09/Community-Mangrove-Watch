@@ -485,6 +485,8 @@ class _ReportScreenState extends State<ReportScreen> {
                                           : (_locationErrorMessage.isNotEmpty ? Colors.red[700] : Colors.blue[700]),
                                       fontWeight: FontWeight.w500,
                                     ),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 2,
                                   ),
                                 ),
                                 if (_isLoadingLocation)

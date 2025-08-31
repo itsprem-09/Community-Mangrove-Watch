@@ -154,6 +154,8 @@ class _MangroveDetectionScreenState extends State<MangroveDetectionScreen> {
                     color: Colors.white70,
                   ),
                   textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -273,13 +275,13 @@ class _MangroveDetectionScreenState extends State<MangroveDetectionScreen> {
   Widget _buildResultView() {
     return BlocBuilder<ImageAnalysisBloc, ImageAnalysisState>(
       builder: (context, state) {
-        return Column(
-          children: [
-            // Image preview
-            Expanded(
-              flex: 2,
-              child: Container(
+        return SingleChildScrollView(
+          child: Column(
+            children: [
+              // Image preview
+              Container(
                 width: double.infinity,
+                height: MediaQuery.of(context).size.height * 0.4,
                 margin: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
@@ -299,15 +301,16 @@ class _MangroveDetectionScreenState extends State<MangroveDetectionScreen> {
                   ),
                 ),
               ),
-            ),
-            
-            // Analysis result
-            Expanded(
-              flex: 1,
-              child: Container(
+              
+              // Analysis result
+              Container(
                 width: double.infinity,
+                constraints: BoxConstraints(
+                  minHeight: 200,
+                  maxHeight: MediaQuery.of(context).size.height * 0.3,
+                ),
                 padding: const EdgeInsets.all(16),
-                margin: const EdgeInsets.all(16),
+                margin: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
@@ -319,42 +322,44 @@ class _MangroveDetectionScreenState extends State<MangroveDetectionScreen> {
                     ),
                   ],
                 ),
-                child: _buildAnalysisResult(state),
+                child: SingleChildScrollView(
+                  child: _buildAnalysisResult(state),
+                ),
               ),
-            ),
-            
-            // Action buttons
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _retakePhoto,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Retake'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+              
+              // Action buttons
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _retakePhoto,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retake'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _pickImageFromGallery,
-                      icon: const Icon(Icons.photo_library),
-                      label: const Text('Gallery'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue[600],
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _pickImageFromGallery,
+                        icon: const Icon(Icons.photo_library),
+                        label: const Text('Gallery'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue[600],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );
