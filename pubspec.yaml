@@ -61,7 +61,7 @@ dependencies:
   image: ^4.1.3
   
   # ML Model inference (using TensorFlow Lite as ONNX alternative)
-  tflite_flutter: ^0.10.4
+  tflite_flutter: ^0.11.0
   
   # Additional image processing
   image_cropper: ^5.0.1
